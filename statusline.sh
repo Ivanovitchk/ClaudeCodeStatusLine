@@ -3,7 +3,12 @@
 # Single line: Model | tokens | %used | %remain | think | 5h bar @reset | 7d bar @reset | extra
 
 set -f  # disable globbing
-VERSION="1.4.2"
+VERSION="1.5.0"
+
+# CLI flags (handled before stdin read so they don't block on `cat`)
+case "$1" in
+    --version|-V) printf '%s\n' "$VERSION"; exit 0 ;;
+esac
 
 input=$(cat)
 
@@ -316,13 +321,20 @@ iso_to_epoch() {
 
 # Format epoch seconds as a remaining-time countdown ("2h23m", "50m", "45s", "now").
 # Negative or zero deltas show "now". Past deltas (clock skew, late refresh) also show "now".
+# Optional 2nd arg "days_compact": when delta >= 24h, render as "X.Yd" instead of "DdHh MMm".
 format_countdown() {
     local target_epoch="$1"
+    local style="$2"
     [ -z "$target_epoch" ] && return
     local now delta
     now=$(date +%s)
     delta=$(( target_epoch - now ))
     if [ "$delta" -le 0 ]; then echo "now"; return; fi
+    if [ "$style" = "days_compact" ] && [ "$delta" -ge 86400 ]; then
+        local tenths=$(( (delta + 4320) / 8640 ))
+        printf "%d.%dd" "$(( tenths / 10 ))" "$(( tenths % 10 ))"
+        return
+    fi
     local d=$(( delta / 86400 ))
     local h=$(( (delta % 86400) / 3600 ))
     local m=$(( (delta % 3600) / 60 ))
@@ -348,6 +360,7 @@ format_reset_clock() {
     hour=$(date -d "@$target_epoch" +%H 2>/dev/null || date -j -r "$target_epoch" +%H 2>/dev/null)
     min=$(date -d "@$target_epoch" +%M 2>/dev/null || date -j -r "$target_epoch" +%M 2>/dev/null)
     [ -z "$day" ] || [ -z "$hour" ] && return
+    hour=${hour#0}  # strip leading zero: "06" -> "6", "00" -> "0"
     day=$(printf '%s' "$day" | tr '[:upper:]' '[:lower:]')
     if [ "$min" = "00" ]; then
         printf "%s at %sh" "$day" "$hour"
@@ -434,7 +447,7 @@ if $effective_builtin; then
         seven_day_color=$(usage_color "$seven_day_pct")
         out+="${sep}${seven_day_color}${seven_day_pct}%${reset}"
         if [ -n "$builtin_seven_day_reset" ] && [ "$builtin_seven_day_reset" != "null" ]; then
-            seven_day_remaining=$(format_countdown "$builtin_seven_day_reset")
+            seven_day_remaining=$(format_countdown "$builtin_seven_day_reset" days_compact)
             seven_day_clock=$(format_reset_clock "$builtin_seven_day_reset")
             if [ -n "$seven_day_remaining" ]; then
                 out+=" ${dim}${seven_day_remaining}${reset}"
