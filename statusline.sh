@@ -3,7 +3,7 @@
 # Single line: Model | tokens | %used | %remain | think | 5h bar @reset | 7d bar @reset | extra
 
 set -f  # disable globbing
-VERSION="1.5.0"
+VERSION="1.5.1"
 
 # CLI flags (handled before stdin read so they don't block on `cat`)
 case "$1" in
@@ -496,7 +496,7 @@ elif [ -n "$usage_data" ] && echo "$usage_data" | jq -e '.five_hour' >/dev/null 
     seven_day_pct=$(echo "$usage_data" | jq -r '.seven_day.utilization // 0' | awk '{printf "%.0f", $1}')
     seven_day_reset_iso=$(echo "$usage_data" | jq -r '.seven_day.resets_at // empty')
     seven_day_reset_epoch=$(iso_to_epoch "$seven_day_reset_iso" 2>/dev/null)
-    seven_day_remaining=$(format_countdown "$seven_day_reset_epoch")
+    seven_day_remaining=$(format_countdown "$seven_day_reset_epoch" days_compact)
     seven_day_clock=$(format_reset_clock "$seven_day_reset_epoch")
     seven_day_color=$(usage_color "$seven_day_pct")
 
