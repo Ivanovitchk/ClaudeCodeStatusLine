@@ -16,6 +16,7 @@ A custom status line for [Claude Code](https://claude.com/claude-code) that disp
 | **Effort** | Reasoning effort level (low, med, high, xhigh) |
 | **5h** | 5-hour rate limit usage percentage and reset time |
 | **7d** | 7-day rate limit usage percentage and reset time |
+| **Scoped** | Model-scoped 7-day limit percentage (e.g. `16% Fable`), when the API reports one |
 | **Extra** | Extra usage credits spent / limit (if enabled) |
 | **Update** | Appears when a new version is available (checked every 24h) |
 

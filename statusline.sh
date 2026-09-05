@@ -3,7 +3,7 @@
 # Single line: Model | tokens | %used | %remain | think | 5h bar @reset | 7d bar @reset | extra
 
 set -f  # disable globbing
-VERSION="1.5.1"
+VERSION="1.6.0"
 
 # CLI flags (handled before stdin read so they don't block on `cat`)
 case "$1" in
@@ -429,6 +429,23 @@ render_extra_usage() {
     fi
 }
 
+# Render model-scoped weekly limits (e.g. "16% Fable") from API usage data.
+# stdin rate_limits doesn't expose them; only the OAuth usage endpoint's limits[] does.
+render_scoped_limits() {
+    local data="$1"
+    [ -z "$data" ] && return
+    local scoped
+    scoped=$(echo "$data" | jq -r '[.limits[]? | select(.kind == "weekly_scoped" and .scope.model.display_name != null) | "\(.percent)\t\(.scope.model.display_name)"] | .[]' 2>/dev/null)
+    [ -z "$scoped" ] && return
+    local pct name color
+    while IFS=$'\t' read -r pct name; do
+        [ -z "$pct" ] && continue
+        pct=$(printf '%.0f' "$pct" 2>/dev/null) || continue
+        color=$(usage_color "$pct")
+        out+="${sep}${color}${pct}%${reset} ${dim}${name}${reset}"
+    done <<< "$scoped"
+}
+
 if $effective_builtin; then
     # ---- Use rate_limits data provided directly by Claude Code in JSON input ----
     # resets_at values are Unix epoch integers in this source
@@ -456,6 +473,9 @@ if $effective_builtin; then
         fi
     fi
 
+    # Model-scoped weekly limits (Fable) come from the API cache, like extra_usage
+    render_scoped_limits "$usage_data"
+
     # Render extra_usage from API cache (stdin rate_limits doesn't expose it)
     render_extra_usage "$usage_data"
 
@@ -476,10 +496,12 @@ if $effective_builtin; then
     fi
     _extra_json=$(echo "$usage_data" | jq -c '.extra_usage // null' 2>/dev/null)
     [ -z "$_extra_json" ] && _extra_json="null"
-    printf '{"five_hour":{"utilization":%s,"resets_at":%s},"seven_day":{"utilization":%s,"resets_at":%s},"extra_usage":%s}' \
+    _limits_json=$(echo "$usage_data" | jq -c '.limits // null' 2>/dev/null)
+    [ -z "$_limits_json" ] && _limits_json="null"
+    printf '{"five_hour":{"utilization":%s,"resets_at":%s},"seven_day":{"utilization":%s,"resets_at":%s},"extra_usage":%s,"limits":%s}' \
         "${builtin_five_hour_pct:-0}" "$_fh_reset_json" \
         "${builtin_seven_day_pct:-0}" "$_sd_reset_json" \
-        "$_extra_json" > "$cache_file" 2>/dev/null
+        "$_extra_json" "$_limits_json" > "$cache_file" 2>/dev/null
 elif [ -n "$usage_data" ] && echo "$usage_data" | jq -e '.five_hour' >/dev/null 2>&1; then
     # ---- Fall back: API-fetched usage data ----
     # ---- 5-hour (current) ----
@@ -506,6 +528,7 @@ elif [ -n "$usage_data" ] && echo "$usage_data" | jq -e '.five_hour' >/dev/null 
         [ -n "$seven_day_clock" ] && out+=" ${dim}(${seven_day_clock})${reset}"
     fi
 
+    render_scoped_limits "$usage_data"
     render_extra_usage "$usage_data"
 else
     # No valid usage data — show placeholders
